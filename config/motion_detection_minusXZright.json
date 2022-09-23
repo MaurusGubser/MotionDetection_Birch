@@ -1,0 +1,13 @@
+{
+  "model": {
+    "class": "MDModel"
+  },
+  "filter": {
+    "nparticles": 200
+  },
+  "sampler": {
+    "nsamples": 5
+  },
+  "input": "input/noised_observations_minusXZright.json",
+  "output": "output/sampled_states_minusXZright_2_200particles.json"
+}

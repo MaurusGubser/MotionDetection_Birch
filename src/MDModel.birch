@@ -1,0 +1,375 @@
+class MDModel < Model {
+  
+  //State vector
+  // 1: x_H (x_0)
+  // 2: y_H (x_1)
+  // 3: phi_0 (theta_0)
+  // 4: phi_1 (theta_1)
+  // 5: phi_2 (theta_2)
+  // 6: phi_3 (theta_3)
+  // 7: x_dot_H
+  // 8: y_dot_H
+  // 9: phi_dot_0
+  // 10: phi_dot_1
+  // 11: phi_dot_2
+  // 12: phi_dot_3
+  // 13: x_ddot_H
+  // 14: y_ddot_H
+  // 15: phi_ddot_0
+  // 16: phi_ddot_1
+  // 17: phi_ddot_2
+  // 18: phi_ddot_3
+  x:Tape<Random<Real[_]>>;
+  
+  //Observations variables
+  //imu0 (left femur)
+  x_ddot_0: Tape<Random<Real>>;
+  y_ddot_0: Tape<Random<Real>>;
+  z_ddot_0: Tape<Random<Real>>;
+  omega_x_0: Tape<Random<Real>>;
+  omega_y_0: Tape<Random<Real>>;
+  omega_z_0: Tape<Random<Real>>;
+  //imu1 (left fibula)
+  x_ddot_1: Tape<Random<Real>>;
+  y_ddot_1: Tape<Random<Real>>;
+  z_ddot_1: Tape<Random<Real>>;
+  omega_x_1: Tape<Random<Real>>;
+  omega_y_1: Tape<Random<Real>>;
+  omega_z_1: Tape<Random<Real>>;
+  //imu3 (right femur)
+  x_ddot_2: Tape<Random<Real>>;
+  y_ddot_2: Tape<Random<Real>>;
+  z_ddot_2: Tape<Random<Real>>;
+  omega_x_2: Tape<Random<Real>>;
+  omega_y_2: Tape<Random<Real>>;
+  omega_z_2: Tape<Random<Real>>;
+  //imu4 (right fibula)
+  x_ddot_3: Tape<Random<Real>>;
+  y_ddot_3: Tape<Random<Real>>;
+  z_ddot_3: Tape<Random<Real>>;
+  omega_x_3: Tape<Random<Real>>;
+  omega_y_3: Tape<Random<Real>>;
+  omega_z_3: Tape<Random<Real>>;
+  //pressure4 (left heel)
+  x_dot_4: Tape<Random<Real>>;
+  y_dot_4: Tape<Random<Real>>;
+  z_dot_4: Tape<Random<Real>>;
+  x_ddot_4: Tape<Random<Real>>;
+  y_ddot_4: Tape<Random<Real>>;
+  z_ddot_4: Tape<Random<Real>>;
+  //pressure5 (right heel)
+  x_dot_5: Tape<Random<Real>>;
+  y_dot_5: Tape<Random<Real>>;
+  z_dot_5: Tape<Random<Real>>;
+  x_ddot_5: Tape<Random<Real>>;
+  y_ddot_5: Tape<Random<Real>>;
+  z_ddot_5: Tape<Random<Real>>;
+  
+  //Fixed parameters
+  //time step
+  dt: Real;
+  //process noise
+  sigma_x_ddot: Real;
+  sigma_y_ddot: Real;
+  sigma_phi_ddot: Real;
+  //observation noise
+  sigma_imu_acc: Real;
+  sigma_imu_gyro: Real;
+  sigma_press_velo: Real;
+  sigma_press_acc: Real;
+  //initialisation parameters
+  a_1: Real[_];
+  P_1: Real[_,_];
+  //process transition matrix
+  T: Real[_,_];
+  //process covariance matrix
+  q_factor: Real;
+  Q: Real[_,_];
+  //observation covariance factor
+  h_factor: Real;
+
+  //mechanical model constants
+  g: Real <- 9.81;  //gravitation constant
+  l_0: Real <- 0.5; //hip - left knee
+  l_1: Real <- 0.6; //left knee - left heel
+  l_2: Real <- 0.5; //hip - right knee
+  l_3: Real <- 0.6; //right knee - right heel
+  c_0: Real <- 0.34; //l_0/2; //hip - c.o.m. left femur
+  c_1: Real <- 0.29; //l_1/2; //left knee - c.o.m. left fibula
+  c_2: Real <- 0.315; //l_2/2; //hip - c.o.m. right femur
+  c_3: Real <- 0.33; //l_3/2; //right knee - c.o.m. right fibula
+  s_0: Real <- 0.0; //0.09; //c.o.m. left femur - IMU1
+  s_1: Real <- 0.0; //-0.01; //c.o.m. left fibula - IMU2
+  s_2: Real <- 0.0; //0.09; //c.o.m. right femur - IMU3
+  s_3: Real <- 0.0; //-0.01; //c.o.m. right fibula - IMU4
+  /*
+  cst_0: Real <- c_0 + s_0;
+  cst_1: Real <- c_1 + s_1;
+  cst_2: Real <- c_2 + s_2;
+  cst_3: Real <- c_3 + s_3;
+  */
+  cst_0: Real <- c_2 + s_2;
+  cst_1: Real <- c_3 + s_3;
+  cst_2: Real <- c_0 + s_0;
+  cst_3: Real <- c_1 + s_1;
+
+
+
+  function state_to_observation(x:Random<Real[_]>) -> Array<Expression<Real>> {
+    y:Array<Expression<Real>>;
+    z:Random<Real>;
+    z <- 0.0;
+    
+    //imu0
+    y.insert(1, box(cst_0*element(x, 15) + g*sin(element(x, 3)) + sin(element(x, 3))*element(x, 14) + cos(element(x, 3))*element(x, 13)));
+    y.insert(2, box(cst_0*pow(element(x, 9), 2.0) + g*cos(element(x, 3)) - sin(element(x, 3))*element(x, 13) + cos(element(x, 3))*element(x, 14)));
+    y.insert(3, z);
+    y.insert(4, z);
+    y.insert(5, z);
+    y.insert(6, box(element(x, 9)));
+    
+    //imu1
+    y.insert(7, box(cst_1*element(x, 15) + cst_1*element(x, 16) + g*sin(element(x, 3) + element(x, 4)) + l_0*sin(element(x, 4))*pow(element(x, 9), 2.0) + l_0*cos(element(x, 4))*element(x, 15) + sin(element(x, 3) + element(x, 4))*element(x, 14) + cos(element(x, 3) + element(x, 4))*element(x, 13)));
+    y.insert(8, box(cst_1*pow(element(x, 9), 2.0) + 2*cst_1*element(x, 9)*element(x, 10) + cst_1*pow(element(x, 10), 2.0) + g*cos(element(x, 3) + element(x, 4)) - l_0*sin(element(x, 4))*element(x, 15) + l_0*cos(element(x, 4))*pow(element(x, 9), 2.0) - sin(element(x, 3) + element(x, 4))*element(x, 13) + cos(element(x, 3) + element(x, 4))*element(x, 14)));
+    y.insert(9, z);
+    y.insert(10, z);
+    y.insert(11, z);
+    y.insert(12, box(element(x, 9) + element(x, 10)));
+    
+    //imu2
+    y.insert(13, box(cst_2*element(x, 17) + g*sin(element(x, 5)) + sin(element(x, 5))*element(x, 14) + cos(element(x, 5))*element(x, 13)));
+    y.insert(14, box(cst_2*pow(element(x, 11), 2.0) + g*cos(element(x, 5)) - sin(element(x, 5))*element(x, 13) + cos(element(x, 5))*element(x, 14)));
+    y.insert(15, z);
+    y.insert(16, z);
+    y.insert(17, z);
+    y.insert(18, box(element(x, 11)));
+    
+    //imu3
+    y.insert(19, box(cst_3*element(x, 17) + cst_3*element(x, 18) + g*sin(element(x, 5) + element(x, 6)) + l_2*sin(element(x, 6))*pow(element(x, 11), 2.0) + l_2*cos(element(x, 6))*element(x, 17) + sin(element(x, 5) + element(x, 6))*element(x, 14) + cos(element(x, 5) + element(x, 6))*element(x, 13)));
+    y.insert(20, box(cst_3*pow(element(x, 11), 2.0) + 2*cst_3*element(x, 11)*element(x, 12) + cst_3*pow(element(x, 12), 2.0) + g*cos(element(x, 5) + element(x, 6)) - l_2*sin(element(x, 6))*element(x, 17) + l_2*cos(element(x, 6))*pow(element(x, 11), 2.0) - sin(element(x, 5) + element(x, 6))*element(x, 13) + cos(element(x, 5) + element(x, 6))*element(x, 14)));
+    y.insert(21, z);
+    y.insert(22, z);
+    y.insert(23, z);
+    y.insert(24, box(element(x, 11) + element(x, 12)));
+    
+    //ps4
+    y.insert(25, box(l_0*cos(element(x, 3))*element(x, 9) + l_1*(element(x, 9) + element(x, 10))*cos(element(x, 3) + element(x, 4)) + element(x, 7)));
+    y.insert(26, box(l_0*sin(element(x, 3))*element(x, 9) + l_1*(element(x, 9) + element(x, 10))*sin(element(x, 3) + element(x, 4)) + element(x, 8)));
+    y.insert(27, z);
+    y.insert(28, box(-l_0*sin(element(x, 3))*pow(element(x, 9), 2.0) + l_0*cos(element(x, 3))*element(x, 15) - l_1*pow(element(x, 9) + element(x, 10), 2.0)*sin(element(x, 3) + element(x, 4)) + l_1*(element(x, 15) + element(x, 16))*cos(element(x, 3) + element(x, 4)) + element(x, 13)));
+    y.insert(29, box(l_0*sin(element(x, 3))*element(x, 15) + l_0*cos(element(x, 3))*pow(element(x, 9), 2.0) + l_1*pow(element(x, 9) + element(x, 10), 2.0)*cos(element(x, 3) + element(x, 4)) + l_1*(element(x, 15) + element(x, 16))*sin(element(x, 3) + element(x, 4)) + element(x, 14)));
+    y.insert(30, z);
+    
+    //ps5
+    y.insert(31, box(l_2*cos(element(x, 5))*element(x, 11) + l_3*(element(x, 11) + element(x, 12))*cos(element(x, 5) + element(x, 6)) + element(x, 7)));
+    y.insert(32, box(l_2*sin(element(x, 5))*element(x, 11) + l_3*(element(x, 11) + element(x, 12))*sin(element(x, 5) + element(x, 6)) + element(x, 8)));
+    y.insert(33, z);
+    y.insert(34, box(-l_2*sin(element(x, 5))*pow(element(x, 11), 2.0) + l_2*cos(element(x, 5))*element(x, 17) - l_3*pow(element(x, 11) + element(x, 12), 2.0)*sin(element(x, 5) + element(x, 6)) + l_3*(element(x, 17) + element(x, 18))*cos(element(x, 5) + element(x, 6)) + element(x, 13)));
+    y.insert(35, box(l_2*sin(element(x, 5))*element(x, 17) + l_2*cos(element(x, 5))*pow(element(x, 11), 2.0) + l_3*pow(element(x, 11) + element(x, 12), 2.0)*cos(element(x, 5) + element(x, 6)) + l_3*(element(x, 17) + element(x, 18))*sin(element(x, 5) + element(x, 6)) + element(x, 14)));
+    y.insert(36, z);
+
+    return y;
+  }
+
+  override function simulate() {
+    T <- [[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0, 0.0, 0.0, pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0, 0.0, 0.0, pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0, 0.0, 0.0, pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0, 0.0, 0.0, pow(dt, 2.0)/2.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0, 0.0, 0.0, pow(dt, 2.0)/2.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0, 0.0, 0.0, pow(dt, 2.0)/2.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, dt],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]];
+
+    Q <- [[sigma_x_ddot*pow(1.0, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, sigma_y_ddot*pow(1.0, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, sigma_phi_ddot*pow(1.0, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/6.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/6.0],
+          [sigma_x_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(1.0, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, sigma_y_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(1.0, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, sigma_phi_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 2.0)/2.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 2.0)/2.0],
+          [sigma_x_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, sigma_y_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*1.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*1.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*1.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*1.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(1.0, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*1.0]];
+/*
+    Q <- [[sigma_x_ddot*pow(dt, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, sigma_y_ddot*pow(dt, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, sigma_phi_ddot*pow(dt, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/6.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 5.0)/24.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/6.0],
+          [sigma_x_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(dt, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, sigma_y_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(dt, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, sigma_phi_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 2.0)/2.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 4.0)/8.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/3.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 2.0)/2.0],
+          [sigma_x_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_x_ddot*dt, 0.0, 0.0, 0.0, 0.0, 0.0],
+          [0.0, sigma_y_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_y_ddot*dt, 0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*dt, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*dt, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*dt, 0.0],
+          [0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 3.0)/6.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*pow(dt, 2.0)/2.0, 0.0, 0.0, 0.0, 0.0, 0.0, sigma_phi_ddot*dt]];
+          */
+  }
+
+  override function simulate(t:Integer) {
+    if t==1 {
+      x[t] ~ MultivariateGaussian(a_1, P_1);
+    }
+    else {
+      x[t] ~ MultivariateGaussian(T*x[t-1], q_factor*Q);
+    }
+    
+    // observation
+    let w <- state_to_observation(x[t]);
+    
+    //right imus
+    x_ddot_2[t] ~ Gaussian(w.get(1), h_factor*sigma_imu_acc);
+    y_ddot_2[t] ~ Gaussian(w.get(2), h_factor*sigma_imu_acc);
+    z_ddot_2[t] ~ Gaussian(w.get(3), h_factor*sigma_imu_acc);
+    omega_x_2[t] ~ Gaussian(w.get(4), h_factor*sigma_imu_gyro);
+    omega_y_2[t] ~ Gaussian(w.get(5), h_factor*sigma_imu_gyro);
+    omega_z_2[t] ~ Gaussian(w.get(6), h_factor*sigma_imu_gyro);
+    x_ddot_3[t] ~ Gaussian(w.get(7), h_factor*sigma_imu_acc);
+    y_ddot_3[t] ~ Gaussian(w.get(8), h_factor*sigma_imu_acc);
+    z_ddot_3[t] ~ Gaussian(w.get(9), h_factor*sigma_imu_acc);
+    omega_x_3[t] ~ Gaussian(w.get(10), h_factor*sigma_imu_gyro);
+    omega_y_3[t] ~ Gaussian(w.get(11), h_factor*sigma_imu_gyro);
+    omega_z_3[t] ~ Gaussian(w.get(12), h_factor*sigma_imu_gyro);
+    //left imus
+    x_ddot_0[t] ~ Gaussian(w.get(13), h_factor*sigma_imu_acc);
+    y_ddot_0[t] ~ Gaussian(w.get(14), h_factor*sigma_imu_acc);
+    z_ddot_0[t] ~ Gaussian(w.get(15), h_factor*sigma_imu_acc);
+    omega_x_0[t] ~ Gaussian(w.get(16), h_factor*sigma_imu_gyro);
+    omega_y_0[t] ~ Gaussian(w.get(17), h_factor*sigma_imu_gyro);
+    omega_z_0[t] ~ Gaussian(w.get(18), h_factor*sigma_imu_gyro);
+    x_ddot_1[t] ~ Gaussian(w.get(19), h_factor*sigma_imu_acc);
+    y_ddot_1[t] ~ Gaussian(w.get(20), h_factor*sigma_imu_acc);
+    z_ddot_1[t] ~ Gaussian(w.get(21), h_factor*sigma_imu_acc);
+    omega_x_1[t] ~ Gaussian(w.get(22), h_factor*sigma_imu_gyro);
+    omega_y_1[t] ~ Gaussian(w.get(23), h_factor*sigma_imu_gyro);
+    omega_z_1[t] ~ Gaussian(w.get(24), h_factor*sigma_imu_gyro);
+    //right pressure
+    x_dot_5[t] ~ Gaussian(w.get(25), h_factor*sigma_press_velo);
+    y_dot_5[t] ~ Gaussian(w.get(26), h_factor*sigma_press_velo);
+    z_dot_5[t] ~ Gaussian(w.get(27), h_factor*sigma_press_velo);
+    x_ddot_5[t] ~ Gaussian(w.get(28), h_factor*sigma_press_acc);
+    y_ddot_5[t] ~ Gaussian(w.get(29), h_factor*sigma_press_acc);
+    z_ddot_5[t] ~ Gaussian(w.get(30), h_factor*sigma_press_acc);
+    //left pressure
+    x_dot_4[t] ~ Gaussian(w.get(31), h_factor*sigma_press_velo);
+    y_dot_4[t] ~ Gaussian(w.get(32), h_factor*sigma_press_velo);
+    z_dot_4[t] ~ Gaussian(w.get(33), h_factor*sigma_press_velo);
+    x_ddot_4[t] ~ Gaussian(w.get(34), h_factor*sigma_press_acc);
+    y_ddot_4[t] ~ Gaussian(w.get(35), h_factor*sigma_press_acc);
+    z_ddot_4[t] ~ Gaussian(w.get(36), h_factor*sigma_press_acc);
+  }
+
+  override function read(buffer:Buffer) {
+    dt <-? buffer.get<Real>("dt");
+    a_1 <-? buffer.get<Real[_]>("a_1");
+    P_1 <-? buffer.get<Real[_,_]>("P_1");
+        
+    sigma_x_ddot <-? buffer.get<Real>("sigma_x_ddot");
+    sigma_y_ddot <-? buffer.get<Real>("sigma_y_ddot");
+    sigma_phi_ddot <-? buffer.get<Real>("sigma_phi_ddot");
+    q_factor <-? buffer.get<Real>("q_factor");
+    
+    sigma_imu_acc <-? buffer.get<Real>("sigma_imu_acc");
+    sigma_imu_gyro <-? buffer.get<Real>("sigma_imu_gyro");
+    sigma_press_velo <-? buffer.get<Real>("sigma_press_velo");
+    sigma_press_acc <-? buffer.get<Real>("sigma_press_acc");
+    h_factor <-? buffer.get<Real>("h_factor"); 
+  }
+  
+  override function read(t:Integer, buffer:Buffer) {
+    //left imus
+    x_ddot_0[t] <-? buffer.get<Real>("x_ddot_0");
+    y_ddot_0[t] <-? buffer.get<Real>("y_ddot_0");
+    z_ddot_0[t] <-? buffer.get<Real>("z_ddot_0");
+    omega_x_0[t] <-? buffer.get<Real>("omega_x_0");
+    omega_y_0[t] <-? buffer.get<Real>("omega_y_0");
+    omega_z_0[t] <-? buffer.get<Real>("omega_z_0");
+    
+    x_ddot_1[t] <-? buffer.get<Real>("x_ddot_1");
+    y_ddot_1[t] <-? buffer.get<Real>("y_ddot_1");
+    z_ddot_1[t] <-? buffer.get<Real>("z_ddot_1");
+    omega_x_1[t] <-? buffer.get<Real>("omega_x_1");
+    omega_y_1[t] <-? buffer.get<Real>("omega_y_1");
+    omega_z_1[t] <-? buffer.get<Real>("omega_z_1");
+    
+    //right imus
+    x_ddot_2[t] <-? buffer.get<Real>("x_ddot_2");
+    y_ddot_2[t] <-? buffer.get<Real>("y_ddot_2");
+    z_ddot_2[t] <-? buffer.get<Real>("z_ddot_2");
+    omega_x_2[t] <-? buffer.get<Real>("omega_x_2");
+    omega_y_2[t] <-? buffer.get<Real>("omega_y_2");
+    omega_z_2[t] <-? buffer.get<Real>("omega_z_2");
+    
+    x_ddot_3[t] <-? buffer.get<Real>("x_ddot_3");
+    y_ddot_3[t] <-? buffer.get<Real>("y_ddot_3");
+    z_ddot_3[t] <-? buffer.get<Real>("z_ddot_3");
+    omega_x_3[t] <-? buffer.get<Real>("omega_x_3");
+    omega_y_3[t] <-? buffer.get<Real>("omega_y_3");
+    omega_z_3[t] <-? buffer.get<Real>("omega_z_3");
+
+    //left pressure
+    x_dot_4[t] <-? buffer.get<Real>("x_dot_4");
+    y_dot_4[t] <-? buffer.get<Real>("y_dot_4");
+    z_dot_4[t] <-? buffer.get<Real>("z_dot_4");
+    x_ddot_4[t] <-? buffer.get<Real>("x_ddot_4");
+    y_ddot_4[t] <-? buffer.get<Real>("y_ddot_4");
+    z_ddot_4[t] <-? buffer.get<Real>("z_ddot_4");
+     
+    //right pressure
+    x_dot_5[t] <-? buffer.get<Real>("x_dot_5");
+    y_dot_5[t] <-? buffer.get<Real>("y_dot_5");
+    z_dot_5[t] <-? buffer.get<Real>("z_dot_5");
+    x_ddot_5[t] <-? buffer.get<Real>("x_ddot_5");
+    y_ddot_5[t] <-? buffer.get<Real>("y_ddot_5");
+    z_ddot_5[t] <-? buffer.get<Real>("z_ddot_5");
+  }
+  
+  override function write(buffer:Buffer) {
+    buffer.set("dt", dt);
+    buffer.set("a_1", a_1);
+    buffer.set("P_1", P_1);
+    
+    buffer.set("T", T);    
+    buffer.set("sigma_x_ddot", sigma_x_ddot);
+    buffer.set("sigma_y_ddot", sigma_y_ddot);
+    buffer.set("sigma_phi_ddot", sigma_phi_ddot);
+    buffer.set("q_factor", q_factor);
+    buffer.set("Q", Q);
+        
+    buffer.set("sigma_imu_acc", sigma_imu_acc);
+    buffer.set("sigma_imu_gyro", sigma_imu_gyro);
+    buffer.set("sigma_press_velo", sigma_press_velo);
+    buffer.set("sigma_press_acc", sigma_press_acc);
+    buffer.set("h_factor", h_factor);    
+  }
+  
+  override function write(t:Integer, buffer:Buffer) {
+    buffer.set("x", x[t]);
+  }
+  
+}

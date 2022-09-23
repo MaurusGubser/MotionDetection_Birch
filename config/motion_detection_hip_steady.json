@@ -1,0 +1,14 @@
+{
+  "model": {
+    "class": "MDModel"
+  },
+  "filter": {
+    "nsteps": 50,
+    "nparticles": 10
+  },
+  "sampler": {
+    "nsamples": 3
+  },
+  "input": "input/noised_observations_hip_steady.json",
+  "output": "output/sampled_states_hip_steady_.json"
+}

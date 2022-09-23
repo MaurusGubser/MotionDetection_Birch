@@ -1,0 +1,13 @@
+{
+  "model": {
+    "class": "MDModel"
+  },
+  "filter": {
+    "nparticles": 200
+  },
+  "sampler": {
+    "nsamples": 5
+  },
+  "input": "input/noised_observations_largetimestep_flippedLR.json",
+  "output": "output/sampled_states_largetimestep_63_200particles_flippedLR.json"
+}

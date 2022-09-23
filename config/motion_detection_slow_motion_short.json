@@ -1,0 +1,14 @@
+{
+  "model": {
+    "class": "MDModel"
+  },
+  "filter": {
+    "nsteps": 600,
+    "nparticles": 200
+  },
+  "sampler": {
+    "nsamples": 5
+  },
+  "input": "input/noised_observations_slow_motion_short.json",
+  "output": "output/sampled_states_slow_motion_short_Lenovo.json"
+}
